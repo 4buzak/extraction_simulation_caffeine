@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>화학 추출(Extraction) & 염기 세척(Wash) 인터랙티브 시뮬레이션</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Pretendard', sans-serif;
+      background-color: #0b1120;
+      color: #e2e8f0;
+      user-select: none;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .flash-glass {
+      background: rgba(17, 24, 39, 0.78);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    .glow-cyan {
+      box-shadow: 0 0 25px rgba(6, 182, 212, 0.25);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 md:p-6">
+  <header class="w-full max-w-6xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 flash-glass rounded-2xl shadow-xl">
+    <div class="flex items-center space-x-3.5">
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/30 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-extrabold text-2xl shadow-inner">
+        ⚗️
+      </div>
+      <div>
+        <h1 class="text-lg md:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+          분액깔때기 추출 & NaOH 세척 시뮬레이션
+          <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+            DCM · Base Wash · Emulsion Break
+          </span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">유색 불순물(노란색)의 NaOH 수용화와 투명한 목적 생성물(DCM층)의 정제 메커니즘</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btn-sound-toggle" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
+        <span id="sound-icon">🔊</span> 사운드 ON
+      </button>
+      <button id="btn-reset" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition">
+        처음부터 다시
+      </button>
+    </div>
+  </header>
+
+  <main class="w-full max-w-6xl mx-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+    <!-- 왼쪽: 시뮬레이션 캔버스 영역 -->
+    <div class="lg:col-span-8 flex flex-col flash-glass rounded-2xl p-4 md:p-5 relative overflow-hidden shadow-2xl">
+      <!-- 상태 뱃지 및 단계 표시 헤더 -->
+      <div class="flex items-center justify-between z-10 mb-2">
+        <div class="flex items-center gap-2.5">
+          <span id="step-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-cyan-400 text-slate-950 uppercase tracking-wider shadow">
+            STEP 1
+          </span>
+          <h2 id="step-title" class="font-bold text-slate-100 text-sm md:text-base">
+            초기 혼합물 투입 및 DCM 첨가
+          </h2>
+        </div>
+        <div id="anim-status" class="text-xs text-cyan-400 font-mono-code flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+          동작 중
+        </div>
+      </div>
+
+      <!-- 플래시 렌더링 캔버스 컨테이너 -->
+      <div class="relative flex-1 w-full h-[490px] md:h-[540px] rounded-xl bg-slate-950/80 border border-slate-800/80 overflow-hidden flex items-center justify-center">
+        <canvas id="simCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+        
+        <!-- 실시간 층 레이블 마우스오버 툴팁 -->
+        <div id="sim-tooltip" class="absolute opacity-0 transition-opacity duration-150 bg-slate-900/95 text-xs text-cyan-200 px-3 py-2 rounded-lg border border-cyan-500/40 pointer-events-none shadow-2xl z-20"></div>
+      </div>
+
+      <!-- 진행 바 -->
+      <div class="w-full bg-slate-800/60 rounded-full h-2 mt-3 overflow-hidden">
+        <div id="progress-bar" class="bg-gradient-to-r from-cyan-400 via-amber-400 to-emerald-400 h-full w-1/6 transition-all duration-300"></div>
+      </div>
+    </div>
+
+    <!-- 오른쪽: 단계별 해설 및 조작 패널 -->
+    <div class="lg:col-span-4 flex flex-col gap-4">
+      <!-- 원리 설명 카드 -->
+      <div class="flash-glass rounded-2xl p-5 flex flex-col justify-between flex-1">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+              <span class="text-xs uppercase tracking-widest text-slate-400 font-bold">실험 관찰 및 원리 해설</span>
+            </div>
+            <span id="target-state-badge" class="text-[11px] font-mono-code px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300">
+              목적물: 유기층에 용해
+            </span>
+          </div>
+
+          <div id="desc-box" class="space-y-3 custom-scrollbar overflow-y-auto max-h-[300px] pr-2">
+            <!-- 자바스크립트로 주입 -->
+          </div>
+        </div>
+
+        <!-- 층 분배 및 밀도 인포그래픽 카드 -->
+        <div class="mt-4 pt-3 border-t border-slate-800/80 bg-slate-900/60 p-3.5 rounded-xl">
+          <div class="text-[11px] font-semibold text-slate-400 mb-2 flex items-center justify-between">
+            <span>용매 밀도 및 배치 상태</span>
+            <span class="text-cyan-400 font-mono-code">DCM (1.33) > 물 (1.00)</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div id="info-top-layer" class="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60 transition-colors">
+              <span class="block text-[10px] text-slate-400">상층 (Aqueous)</span>
+              <span id="info-top-text" class="font-bold text-amber-400">노란색 수용액</span>
+            </div>
+            <div id="info-bottom-layer" class="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60 transition-colors">
+              <span class="block text-[10px] text-slate-400">하층 (Organic DCM)</span>
+              <span id="info-bottom-text" class="font-bold text-slate-200">무색 투명 DCM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 내비게이션 컨트롤 버튼 영역 -->
+      <div class="flash-glass rounded-2xl p-4 flex flex-col gap-3">
+        <div class="grid grid-cols-6 gap-1.5">
+          <button data-step="1" class="step-nav-btn py-2 text-xs font-bold rounded-lg bg-cyan-400 text-slate-950 transition">1</button>
+          <button data-step="2" class="step-nav-btn py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">2</button>
+          <button data-step="3" class="step-nav-btn py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">3</button>
+          <button data-step="4" class="step-nav-btn py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">4</button>
+          <button data-step="5" class="step-nav-btn py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">5</button>
+          <button data-step="6" class="step-nav-btn py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">6</button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btn-prev" class="flex-1 py-2.5 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-1">
+            ◀ 이전 단계
+          </button>
+          <button id="btn-play-pause" class="px-4 py-2.5 rounded-xl font-bold text-sm bg-cyan-600 hover:bg-cyan-500 text-white transition flex items-center justify-center shadow-lg">
+            <span id="play-pause-icon">▶</span>
+          </button>
+          <button id="btn-next" class="flex-1 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-extrabold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-1">
+            다음 단계 ▶
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="w-full max-w-6xl mx-auto mt-4 text-center text-xs text-slate-500">
+    분액깔때기 액-액 추출(Liquid-Liquid Extraction) 및 염기 세척(Basic Wash) 시각화 플랫폼
+  </footer>
+
+  <script>
+    let audioCtx = null;
+    let isSoundOn = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function playBeep(freq = 440, type = 'sine', duration = 0.12, vol = 0.08) {
+      if (!isSoundOn) return;
+      try {
+        initAudio();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function playDripSound() {
+      playBeep(920, 'sine', 0.06, 0.06);
+      setTimeout(() => playBeep(1400, 'sine', 0.05, 0.04), 40);
+    }
+
+    function playActionSound() {
+      playBeep(520, 'triangle', 0.15, 0.07);
+    }
+
+    const stepData = [
+      {
+        step: 1,
+        title: "시료 투입 및 DCM 첨가",
+        statusText: "DCM 침강 중 (밀도 차이)",
+        topName: "노란색 수용액 (불순물+목적물)",
+        bottomName: "무색 투명 DCM (아래로 침강)",
+        targetBadge: "목적물: 노란 수용액에 용해",
+        desc: `
+          <h3 class="text-cyan-400 font-bold text-sm">1. 노란색 초기 혼합물 + 무색 DCM 투입</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            분액깔때기 안에 분리 대상 물질(목적 화합물)과 유색 불순물이 섞여 있는 <strong>노란색 수용액</strong>이 들어있습니다. 
+            여기에 무색의 유기용매인 <strong>다이클로로메테인(DCM)</strong>을 가합니다.
+          </p>
+          <div class="p-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-200">
+            <strong>밀도 관찰:</strong> DCM의 밀도(약 1.33 g/cm³)는 물(1.00 g/cm³)보다 훨씬 무겁습니다. 따라서 DCM은 노란 수용액 층을 관통하여 <strong>깔때기 바닥(하층)으로 침강</strong>합니다.
+          </div>
+        `
+      },
+      {
+        step: 2,
+        title: "흔들기 & 미해결 에멀션 발생",
+        statusText: "진탕 후 뿌연 유화층(Emulsion) 형성",
+        topName: "옅어진 수용액 층",
+        bottomName: "노란색 DCM 층 (목적물+유색물질)",
+        targetBadge: "목적물: DCM 층 및 에멀션에 분포",
+        desc: `
+          <h3 class="text-amber-400 font-bold text-sm">2. 1차 추출(Shaking) 및 에멀션 층 형성</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            마개를 닫고 뒤집어 강하게 흔들고(Shaking), 콕을 열어 증기압을 배출(Venting)합니다. 
+            스탠드에 정치시키자 유기 물질들이 DCM으로 이동하며 하층도 노란색을 띠게 되지만, 계면에 <strong>탁하고 뿌연 거품 형태의 에멀션(유화) 층</strong>이 두껍게 갇힙니다.
+          </p>
+          <div class="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs text-rose-200">
+            <strong>실험 조작 포인트:</strong> 에멀션을 여기서 억지로 풀지 않고, <strong>에멀션 층까지 전부 하층 DCM과 함께 받아내어</strong> 다음 염기 세척(Wash) 단계에서 일괄 해결하기로 합니다!
+          </div>
+        `
+      },
+      {
+        step: 3,
+        title: "DCM & 에멀션 층 통째로 수거",
+        statusText: "하층 삼각플라스크로 드레인 완료",
+        topName: "잔류 상층 수용액 (폐기 예정)",
+        bottomName: "드레인 진행 중 (DCM + 에멀션)",
+        targetBadge: "목적물: 플라스크(DCM+에멀션)",
+        desc: `
+          <h3 class="text-sky-400 font-bold text-sm">3. 삼각플라스크에 DCM + 에멀션 층 일괄 수거</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            분액깔때기 상단 마개를 열고, 아래에 <strong>깨끗한 삼각플라스크</strong>를 받친 뒤 콕(Stopcock)을 엽니다.
+          </p>
+          <div class="p-2.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-xs text-sky-200">
+            <strong>드레인 테크닉:</strong> 하층의 노란색 DCM 액체를 먼저 받고, 경계면에 낀 <strong>뿌연 에멀션 층까지 남김없이 삼각플라스크로 전부 쓸어 담습니다.</strong>
+            깔때기에는 상층의 잔여 수용액만 남긴 후 버립니다.
+          </div>
+        `
+      },
+      {
+        step: 4,
+        title: "NaOH 세척 & 에멀션 해소 (핵심!)",
+        statusText: "NaOH Wash: 노란색이 상층으로 이동!",
+        topName: "노란색 NaOH 수용액 층 (유색 불순물)",
+        bottomName: "무색 투명 DCM 층 (목적 화합물 정제)",
+        targetBadge: "★ 목적물: 투명한 DCM 층에 존재",
+        desc: `
+          <h3 class="text-emerald-400 font-bold text-sm">4. NaOH 수용액 세척 (유색 불순물 제거 및 에멀션 파괴)</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            삼각플라스크에 받아둔 [DCM + 에멀션] 액체를 깔때기에 다시 붓고, <strong>무색의 수산화나트륨(NaOH) 수용액</strong>을 가해 흔들어줍니다.
+          </p>
+          <div class="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-200 space-y-1">
+            <p><strong>반응 메커니즘:</strong></p>
+            <p>① 노란색 산성/페놀계 유색 성분이 NaOH와 반응하여 수용성 염(Salt)으로 변환되어 <strong>상층의 NaOH 수용액 층으로 이동(상층이 노란색으로 변함!)</strong></p>
+            <p>② 답답했던 계면의 에멀션 거품이 사르르 깨져 소멸!</p>
+            <p>③ 우리가 얻고자 하는 최종 목적 화합물은 <strong>하층의 깨끗하고 투명한 무색 DCM 층</strong>에 남게 됩니다.</p>
+          </div>
+        `
+      },
+      {
+        step: 5,
+        title: "증류수 세척 (Water Wash)",
+        statusText: "잔류 염기(NaOH) 세척 단계",
+        topName: "무색 증류수 (잔여 염기 흡수)",
+        bottomName: "무색 투명 DCM (정제된 목적물)",
+        targetBadge: "목적물: 투명한 DCM 층",
+        desc: `
+          <h3 class="text-cyan-400 font-bold text-sm">5. 상층 노란 폐액 분리 후 증류수 세척</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            상층의 노란색 NaOH 폐액을 완전히 분리해 버린 후, 투명한 DCM 층에 <strong>순수한 증류수(DI Water)</strong>를 가하여 린스합니다.
+          </p>
+          <div class="p-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-200">
+            <strong>세척 목적:</strong> 이전 단계에서 유기층에 미량 남아있을 수 있는 수산화나트륨(NaOH) 잔류 염기를 상층 증류수로 씻어내어 중화 및 순수성을 극대화합니다.
+          </div>
+        `
+      },
+      {
+        step: 6,
+        title: "최종 순수 목적 화합물 회수",
+        statusText: "정제 완료 · 투명한 최종 추출액 수거",
+        topName: "상층 증류수 (폐기)",
+        bottomName: "최종 회수된 무색 투명 DCM 용액",
+        targetBadge: "★ 최종 추출 정제 완료",
+        desc: `
+          <h3 class="text-cyan-300 font-bold text-sm">6. 깨끗한 삼각플라스크에 최종 추출액 분리 완료</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            하단 콕을 열어 에멀션과 유색 불순물이 완벽히 제거된 <strong>투명하고 맑은 무색 DCM 추출액</strong>을 최종 삼각플라스크에 받아냅니다.
+          </p>
+          <div class="p-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-200">
+            <strong>실험 성공:</strong> 
+            유색 불순물은 NaOH 층으로 보내 제거하고, 골칫거리였던 에멀션까지 말끔히 해소하여 고순도의 목적 유기 화합물을 맑은 DCM 용액으로 성공적으로 분리하였습니다!
+          </div>
+        `
+      }
+    ];
+
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    let currentStep = 1;
+    let stepProgress = 0; // 0.0 ~ 1.0
+    let isPlaying = true;
+    let animFrameId = null;
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // 에멀션 기포 입자 배열 생성
+    const emulsionParticles = [];
+    for (let i = 0; i < 55; i++) {
+      emulsionParticles.push({
+        x: (Math.random() - 0.5) * 75,
+        y: (Math.random() - 0.5) * 22,
+        r: Math.random() * 4.5 + 2,
+        opacity: Math.random() * 0.7 + 0.3,
+        speedX: (Math.random() - 0.5) * 0.35,
+        speedY: (Math.random() - 0.5) * 0.25
+      });
+    }
+
+    // 드레인 액체 방울
+    const dripDrops = [];
+
+    function drawApparatus(cx, cy) {
+      // 1. 실험실 철제 링 스탠드 (Iron Stand & Clamp)
+      ctx.save();
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 3;
+
+      // 베이스 플레이트
+      ctx.fillRect(cx - 150, cy + 225, 175, 18);
+      ctx.strokeRect(cx - 150, cy + 225, 175, 18);
+
+      // 세로 기둥 (Iron rod)
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(cx - 105, cy - 235, 13, 460);
+      ctx.strokeRect(cx - 105, cy - 235, 13, 460);
+
+      // 클램프 홀더 및 링 서포트
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(cx - 110, cy - 70, 24, 20);
+      ctx.fillRect(cx - 90, cy - 65, 55, 10);
+
+      // 분액깔때기를 받치는 원형 링
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 5.5;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - 40, 58, 13, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // 2. 표준 서양배형 분액깔때기 (Pear-shaped Separatory Funnel)
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Step 2 흔들기 애니메이션 (뒤집어 흔드는 회전 효과)
+      if (currentStep === 2 && stepProgress < 0.6) {
+        const shakeAngle = Math.sin(Date.now() * 0.038) * 0.12;
+        ctx.rotate(shakeAngle);
+      }
+
+      // 우아한 표준 서양배형 분액깔때기 외곽선 패스 생성
+      function createFunnelPath() {
+        ctx.beginPath();
+        // 상단 입구 림 (Rim)
+        ctx.moveTo(-17, -190);
+        ctx.lineTo(17, -190);
+        // 목 부분 (Neck)
+        ctx.lineTo(15, -155);
+        // 둥글고 볼록한 어깨(Shoulder) -> 부드러운 서양배형 원뿔 몸통으로 좁아짐
+        ctx.bezierCurveTo(72, -125, 68, -35, 34, 45);
+        // 테이퍼링되어 콕 바로 위 튜브로 연결
+        ctx.lineTo(13, 115);
+        // 테플론 콕 조인트 하우징
+        ctx.lineTo(13, 150);
+        // 하단 배출구 팁 (Tip nozzle)
+        ctx.lineTo(8, 185);
+        ctx.lineTo(5, 185);
+        ctx.lineTo(5, 150);
+        ctx.lineTo(-5, 150);
+        ctx.lineTo(-5, 185);
+        ctx.lineTo(-8, 185);
+        ctx.lineTo(-13, 150);
+        ctx.lineTo(-13, 115);
+        ctx.lineTo(-34, 45);
+        ctx.bezierCurveTo(-68, -35, -72, -125, -15, -155);
+        ctx.closePath();
+      }
+
+      createFunnelPath();
+
+      // 내부 클리핑 후 액체 층 그리기
+      ctx.save();
+      ctx.clip();
+      drawLiquidLayers();
+      ctx.restore();
+
+      // 유리 외곽선 및 반사광
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+
+      // 유리 표면 하이라이트 곡선
+      ctx.beginPath();
+      ctx.moveTo(-50, -115);
+      ctx.bezierCurveTo(-58, -40, -42, 30, -20, 75);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+
+      // 상단 지상 연마 유리 마개 (Ground glass stopper)
+      const isStopperOpen = (currentStep === 1 || currentStep === 3 || currentStep === 6);
+      ctx.save();
+      if (isStopperOpen) {
+        ctx.translate(45, -205);
+        ctx.rotate(0.25);
+      } else {
+        ctx.translate(0, -192);
+      }
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.65)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.fillRect(-11, -16, 22, 16);
+      ctx.strokeRect(-11, -16, 22, 16);
+      ctx.beginPath();
+      ctx.ellipse(0, -20, 11, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // 테플론 콕(Stopcock) 밸브 렌더링
+      const isDraining = (currentStep === 3 && stepProgress < 0.85) || 
+                         (currentStep === 6 && stepProgress > 0.1 && stepProgress < 0.9);
+
+      ctx.save();
+      ctx.translate(0, 132);
+      ctx.fillStyle = '#0ea5e9'; // 테플론 블루 핸들
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      // 콕 회전: 열림(세로, 90도 회전) / 닫힘(가로)
+      ctx.rotate(isDraining ? Math.PI / 2 : 0);
+      ctx.fillRect(-22, -6, 44, 12);
+      ctx.strokeRect(-22, -6, 44, 12);
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.restore(); // 깔때기 복원
+
+      // 3. 하단 삼각플라스크 (Erlenmeyer Flask)
+      drawErlenmeyerFlask(cx, cy + 220);
+    }
+
+    function drawLiquidLayers() {
+      // 층 경계 Y 좌표 기준:
+      // 깔때기 내부 목: -150
+      // 넓은 어깨: -90 ~ -30
+      // 계면 부근: 5 ~ 25
+      // 하단 원뿔부: 25 ~ 115
+
+      if (currentStep === 1) {
+        // [Step 1] 상층: 노란색 수용액 / 하층: 무색 투명 DCM (바닥으로 침강)
+        const dcmHeight = Math.min(70, stepProgress * 70);
+
+        // 하층 DCM (무색 투명 굴절빛)
+        ctx.fillStyle = 'rgba(224, 242, 254, 0.35)';
+        ctx.fillRect(-90, 115 - dcmHeight, 180, dcmHeight + 40);
+
+        // 상층 노란색 수용액 (불순물 + 목적물)
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.85)';
+        ctx.fillRect(-90, -140, 180, (115 - dcmHeight) - (-140));
+
+        // 침강하는 DCM 투입 스트림 표현
+        if (stepProgress < 0.8) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+          ctx.fillRect(-2, -150, 4, 180);
+        }
+      }
+      else if (currentStep === 2) {
+        // [Step 2] 흔들기 후: 상층(옅은 수용액), 계면(뿌연 에멀션 층), 하층(노란색 DCM 층)
+        if (stepProgress < 0.5) {
+          // 흔드는 도중 탁한 노란 혼합액
+          ctx.fillStyle = 'rgba(245, 215, 75, 0.85)';
+          ctx.fillRect(-90, -140, 180, 260);
+        } else {
+          // 상층: 옅어진 노란 수용액
+          ctx.fillStyle = 'rgba(254, 240, 138, 0.6)';
+          ctx.fillRect(-90, -140, 180, 135);
+
+          // 중간 계면: 두껍고 탁한 에멀션(유화) 층
+          ctx.fillStyle = 'rgba(253, 230, 138, 0.92)';
+          ctx.fillRect(-90, -5, 180, 32);
+
+          // 에멀션 기포 입자들
+          ctx.save();
+          emulsionParticles.forEach(p => {
+            p.x += p.speedX;
+            p.y += p.speedY;
+            if (p.x > 40) p.x = -40;
+            if (p.x < -40) p.x = 40;
+            if (p.y > 10) p.y = -10;
+            if (p.y < -10) p.y = 10;
+
+            ctx.beginPath();
+            ctx.arc(p.x, 10 + p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity * 0.9})`;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(217, 119, 6, 0.35)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          });
+          ctx.restore();
+
+          // 하층: 목적물과 유색물질이 녹아 노란색을 띠는 DCM 층
+          ctx.fillStyle = 'rgba(234, 179, 8, 0.88)';
+          ctx.fillRect(-90, 27, 180, 95);
+        }
+      }
+      else if (currentStep === 3) {
+        // [Step 3] 하층 노란 DCM 및 에멀션 층을 아래 플라스크로 통째로 드레인
+        const drainAmount = stepProgress * 125;
+
+        // 상층 옅은 수용액 (내려와서 깔때기 아래쪽에 남음)
+        const topY = Math.min(50, -140 + drainAmount);
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.6)';
+        ctx.fillRect(-90, topY, 180, 110);
+
+        // 에멀션 층 (stepProgress와 함께 빠져나감)
+        if (stepProgress < 0.72) {
+          const emY = -5 + drainAmount * 1.15;
+          ctx.fillStyle = 'rgba(253, 230, 138, 0.9)';
+          ctx.fillRect(-90, emY, 180, 28);
+          // 거품 입자 일부 드레인 연출
+          emulsionParticles.slice(0, 18).forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x * 0.6, emY + 14 + p.y * 0.5, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.fill();
+          });
+        }
+
+        // 하층 노란 DCM (초반에 콕을 통해 먼저 빠져나감)
+        if (stepProgress < 0.5) {
+          const dcmY = 27 + drainAmount * 1.3;
+          ctx.fillStyle = 'rgba(234, 179, 8, 0.88)';
+          ctx.fillRect(-90, dcmY, 180, 100);
+        }
+
+        // 팁 노즐 드레인 스트림
+        if (stepProgress < 0.85) {
+          ctx.fillStyle = stepProgress < 0.45 ? 'rgba(234, 179, 8, 0.9)' : 'rgba(253, 230, 138, 0.92)';
+          ctx.fillRect(-2, 132, 4, 60);
+        }
+      }
+      else if (currentStep === 4) {
+        // [Step 4] ★ 중요 핵심 수정사항! ★
+        // 받아둔 DCM+에멀션 재투입 + 무색 NaOH 수용액 첨가 후 Wash
+        // -> 노란색 유색 성분이 상층 NaOH 층으로 이동하여 상층이 노란색으로 변함!
+        // -> 에멀션은 사르르 깨져 사라짐!
+        // -> 하층의 DCM 층은 깨끗하고 투명한 무색이 됨 (목적물 잔류)!
+
+        // 노란색의 상층 이동 트랜지션 (progress 0.2 ~ 0.8)
+        const transT = Math.min(1, Math.max(0, (stepProgress - 0.2) / 0.6));
+
+        // 1. 상층: 무색 투명 -> 선명한 노란색 NaOH 수용액 층으로 변화!
+        const rTop = Math.round(220 + (250 - 220) * transT);
+        const gTop = Math.round(240 + (204 - 240) * transT);
+        const bTop = Math.round(255 + (21 - 255) * transT);
+        const aTop = 0.35 + 0.5 * transT;
+        ctx.fillStyle = `rgba(${rTop}, ${gTop}, ${bTop}, ${aTop})`;
+        ctx.fillRect(-90, -135, 180, 145);
+
+        // 2. 에멀션 층: 초기(stepProgress < 0.45)에 존재하다가 사르르 분해 소멸
+        if (stepProgress < 0.45) {
+          const emFade = 1 - (stepProgress / 0.45);
+          ctx.fillStyle = `rgba(253, 230, 138, ${emFade * 0.85})`;
+          ctx.fillRect(-90, 10, 180, 18 * emFade);
+          // 팝핑되는 에멀션 버블
+          emulsionParticles.slice(0, 16).forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, 19 + p.y * emFade, p.r * emFade, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${emFade})`;
+            ctx.fill();
+          });
+        }
+
+        // 3. 하층: 노란색이었던 DCM 층이 노란 성분을 NaOH 층으로 빼앗기며 -> 완전한 무색 투명 DCM으로 정제!
+        const rBot = Math.round(234 + (224 - 234) * transT);
+        const gBot = Math.round(179 + (242 - 179) * transT);
+        const bBot = Math.round(8 + (254 - 8) * transT);
+        const aBot = 0.88 - 0.53 * transT; // 불투명 노랑(0.88) -> 투명 무색(0.35)
+        ctx.fillStyle = `rgba(${rBot}, ${gBot}, ${bBot}, ${aBot})`;
+        ctx.fillRect(-90, 10, 180, 105);
+
+        // 에멀션이 깨진 후의 깨끗하고 선명한 칼분리 수평 계면선
+        if (stepProgress >= 0.45) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(-45, 10);
+          ctx.lineTo(45, 10);
+          ctx.stroke();
+        }
+      }
+      else if (currentStep === 5) {
+        // [Step 5] 상층 노란 NaOH 폐액 분리 후, 무색 증류수(DI Water)로 잔여 염기 세척
+        // 상층: 무색 투명 증류수
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.35)';
+        ctx.fillRect(-90, -135, 180, 145);
+
+        // 하층: 깨끗하고 투명한 무색 DCM 층 (목적 화합물 함유)
+        ctx.fillStyle = 'rgba(224, 242, 254, 0.38)';
+        ctx.fillRect(-90, 10, 180, 105);
+
+        // 아주 선명한 계면선
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(-45, 10);
+        ctx.lineTo(45, 10);
+        ctx.stroke();
+      }
+      else if (currentStep === 6) {
+        // [Step 6] 최종 회수: 하층의 무색 투명한 순수 DCM 추출액을 새 삼각플라스크로 드레인!
+        const finalDrain = stepProgress * 115;
+
+        // 상층 무색 증류수는 내려오면서 콕 위에 안전하게 정지
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.35)';
+        ctx.fillRect(-90, -135 + finalDrain * 0.9, 180, 140);
+
+        // 하층 무색 DCM 층 드레인
+        if (stepProgress < 0.9) {
+          ctx.fillStyle = 'rgba(224, 242, 254, 0.38)';
+          ctx.fillRect(-90, 10 + finalDrain, 180, 105);
+
+          // 무색 투명 드레인 스트림
+          ctx.fillStyle = 'rgba(224, 242, 254, 0.65)';
+          ctx.fillRect(-2, 132, 4, 60);
+        }
+      }
+    }
+
+    function drawErlenmeyerFlask(fx, fy) {
+      ctx.save();
+      ctx.translate(fx, fy);
+
+      // 삼각플라스크 외곽선 패스
+      ctx.beginPath();
+      ctx.moveTo(-20, -45);
+      ctx.lineTo(20, -45);
+      ctx.lineTo(20, -20);
+      ctx.lineTo(70, 65);
+      ctx.bezierCurveTo(72, 76, 62, 80, 48, 80);
+      ctx.lineTo(-48, 80);
+      ctx.bezierCurveTo(-62, 80, -72, 76, -70, 65);
+      ctx.lineTo(-20, -20);
+      ctx.closePath();
+
+      // 내부 클리핑 후 담기는 액체 렌더링
+      ctx.save();
+      ctx.clip();
+
+      let flaskFillLevel = 0;
+
+      if (currentStep === 3) {
+        // Step 3: 노란색 DCM 액체와 탁한 에멀션 층이 함께 삼각플라스크에 차오름
+        flaskFillLevel = Math.min(70, stepProgress * 75);
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.88)';
+        ctx.fillRect(-80, 80 - flaskFillLevel, 160, flaskFillLevel);
+
+        // 상단에 탁한 에멀션 거품층 형성
+        if (stepProgress > 0.35) {
+          ctx.fillStyle = 'rgba(253, 230, 138, 0.9)';
+          ctx.fillRect(-80, 80 - flaskFillLevel, 160, 18);
+        }
+      }
+      else if (currentStep === 4) {
+        // Step 4 시작 시 깔때기로 액체를 재투입했으므로 플라스크는 비워진 상태
+        flaskFillLevel = 0;
+      }
+      else if (currentStep === 6) {
+        // Step 6: ★ 최종 정제된 무색 투명한 순수 DCM 추출액이 차오름! ★
+        flaskFillLevel = Math.min(70, stepProgress * 75);
+        ctx.fillStyle = 'rgba(224, 242, 254, 0.42)'; // 맑고 투명한 DCM 용액
+        ctx.fillRect(-80, 80 - flaskFillLevel, 160, flaskFillLevel);
+
+        // 표면 잔물결 및 반사광
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.fillRect(-45, 80 - flaskFillLevel, 90, 2.5);
+      }
+
+      ctx.restore();
+
+      // 플라스크 유리 테두리
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // 눈금선 (Graduation marks)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const markY = 60 - i * 18;
+        ctx.beginPath();
+        ctx.moveTo(18 + i * 4.5, markY);
+        ctx.lineTo(32 + i * 4.5, markY);
+        ctx.stroke();
+      }
+
+      // 플라스크 라벨 텍스트
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '11px Pretendard, sans-serif';
+      ctx.textAlign = 'center';
+      const labelText = (currentStep === 6) ? '정제 완료 삼각플라스크' : '수거용 삼각플라스크';
+      ctx.fillText(labelText, 0, 98);
+
+      ctx.restore();
+    }
+
+    function updateAndDrawDrops(cx, cy) {
+      const isDraining = (currentStep === 3 && stepProgress < 0.85) || 
+                         (currentStep === 6 && stepProgress > 0.1 && stepProgress < 0.9);
+
+      if (isDraining && Math.random() < 0.42) {
+        let dropColor = 'rgba(234, 179, 8, 0.9)';
+        if (currentStep === 3) {
+          dropColor = (stepProgress > 0.5) ? 'rgba(253, 230, 138, 0.92)' : 'rgba(234, 179, 8, 0.9)';
+        } else if (currentStep === 6) {
+          // 최종 단계에서는 무색 투명 방울!
+          dropColor = 'rgba(224, 242, 254, 0.75)';
+        }
+
+        dripDrops.push({
+          x: cx + (Math.random() - 0.5) * 4,
+          y: cy + 185,
+          speed: 6.5 + Math.random() * 3,
+          color: dropColor
+        });
+        if (Math.random() < 0.18) playDripSound();
+      }
+
+      for (let i = dripDrops.length - 1; i >= 0; i--) {
+        const d = dripDrops[i];
+        d.y += d.speed;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = d.color;
+        ctx.fill();
+
+        // 플라스크 바닥 도달 시 제거
+        if (d.y > cy + 285) {
+          dripDrops.splice(i, 1);
+        }
+      }
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const cx = canvas.width / (2 * (window.devicePixelRatio || 1));
+      const cy = (canvas.height / (2 * (window.devicePixelRatio || 1))) - 25;
+
+      // 실험 기구 렌더링
+      drawApparatus(cx, cy);
+
+      // 액적 애니메이션
+      updateAndDrawDrops(cx, cy);
+
+      // 진행도 업데이트
+      if (isPlaying) {
+        stepProgress += 0.007;
+        if (stepProgress >= 1) {
+          stepProgress = 1;
+          isPlaying = false;
+          updatePlayPauseButton();
+        }
+        updateProgressBar();
+      }
+
+      animFrameId = requestAnimationFrame(render);
+    }
+
+    function updateUI() {
+      const data = stepData[currentStep - 1];
+      document.getElementById('step-badge').innerText = `STEP ${data.step}`;
+      document.getElementById('step-title').innerText = data.title;
+      document.getElementById('anim-status').innerHTML = `
+        <span class="w-2 h-2 rounded-full ${isPlaying ? 'bg-cyan-400 animate-ping' : 'bg-slate-500'}"></span>
+        ${isPlaying ? data.statusText : '일시정지 / 대기'}
+      `;
+      document.getElementById('desc-box').innerHTML = data.desc;
+      document.getElementById('target-state-badge').innerText = data.targetBadge;
+
+      // 용매 배치 카드 텍스트 갱신
+      document.getElementById('info-top-text').innerText = data.topName;
+      document.getElementById('info-bottom-text').innerText = data.bottomName;
+
+      // 4단계 이후 색상 강조
+      if (currentStep >= 4) {
+        document.getElementById('info-top-text').className = 'font-bold text-amber-400';
+        document.getElementById('info-bottom-text').className = 'font-bold text-cyan-300';
+      } else {
+        document.getElementById('info-top-text').className = 'font-bold text-amber-400';
+        document.getElementById('info-bottom-text').className = 'font-bold text-slate-200';
+      }
+
+      // 상단 스텝 탭 버튼 스타일 갱신
+      document.querySelectorAll('.step-nav-btn').forEach(btn => {
+        const s = parseInt(btn.getAttribute('data-step'));
+        if (s === currentStep) {
+          btn.className = 'step-nav-btn py-2 text-xs font-bold rounded-lg bg-cyan-400 text-slate-950 shadow-md transition scale-105';
+        } else if (s < currentStep) {
+          btn.className = 'step-nav-btn py-2 text-xs font-bold rounded-lg bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition';
+        } else {
+          btn.className = 'step-nav-btn py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition';
+        }
+      });
+
+      document.getElementById('btn-prev').disabled = (currentStep === 1);
+      document.getElementById('btn-next').disabled = (currentStep === 6);
+
+      updatePlayPauseButton();
+      updateProgressBar();
+    }
+
+    function updateProgressBar() {
+      const totalPercent = ((currentStep - 1) + stepProgress) / 6 * 100;
+      document.getElementById('progress-bar').style.width = `${Math.min(100, Math.max(3, totalPercent))}%`;
+    }
+
+    function updatePlayPauseButton() {
+      const btn = document.getElementById('btn-play-pause');
+      const icon = document.getElementById('play-pause-icon');
+      if (isPlaying) {
+        icon.innerText = '⏸';
+        btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+        btn.classList.add('bg-cyan-600', 'hover:bg-cyan-500');
+      } else {
+        icon.innerText = '▶';
+        btn.classList.remove('bg-cyan-600', 'hover:bg-cyan-500');
+        btn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+      }
+    }
+
+    function setStep(newStep) {
+      if (newStep < 1 || newStep > 6) return;
+      currentStep = newStep;
+      stepProgress = 0;
+      isPlaying = true;
+      dripDrops.length = 0;
+      playActionSound();
+      updateUI();
+    }
+
+    document.getElementById('btn-next').addEventListener('click', () => {
+      if (currentStep < 6) setStep(currentStep + 1);
+    });
+
+    document.getElementById('btn-prev').addEventListener('click', () => {
+      if (currentStep > 1) setStep(currentStep - 1);
+    });
+
+    document.getElementById('btn-play-pause').addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      if (isPlaying && stepProgress >= 1) {
+        stepProgress = 0;
+      }
+      playBeep(520, 'sine', 0.1);
+      updatePlayPauseButton();
+      updateUI();
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      setStep(1);
+    });
+
+    document.querySelectorAll('.step-nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const stepNum = parseInt(btn.getAttribute('data-step'));
+        setStep(stepNum);
+      });
+    });
+
+    document.getElementById('btn-sound-toggle').addEventListener('click', () => {
+      isSoundOn = !isSoundOn;
+      document.getElementById('sound-icon').innerText = isSoundOn ? '🔊' : '🔇';
+      document.getElementById('btn-sound-toggle').innerText = isSoundOn ? '🔊 사운드 ON' : '🔇 사운드 OFF';
+      document.getElementById('btn-sound-toggle').classList.toggle('text-rose-400', !isSoundOn);
+    });
+
+    // 캔버스 인터랙티브 툴팁 마우스 이벤트
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const cx = rect.width / 2;
+      const cy = rect.height / 2 - 25;
+
+      const tooltip = document.getElementById('sim-tooltip');
+      let text = '';
+
+      if (Math.abs(x - cx) < 65 && y > cy - 150 && y < cy + 120) {
+        if (y < cy) {
+          if (currentStep <= 3) {
+            text = '상층: 노란색 수용액 (불순물 + 수용성 성분)';
+          } else if (currentStep === 4) {
+            text = '상층: 노란색 NaOH 수용액 층 (유색 불순물이 염으로 이동)';
+          } else {
+            text = '상층: 무색 증류수 (Water Wash)';
+          }
+        } else if (y >= cy && y <= cy + 25 && (currentStep === 2 || currentStep === 3)) {
+          text = '계면: 탁한 에멀션(Emulsion) 층 (유화 기포)';
+        } else {
+          if (currentStep <= 3) {
+            text = '하층: DCM 용액 (밀도 1.33 g/cm³)';
+          } else {
+            text = '하층: 무색 투명한 순수 DCM 층 (정제된 목적 화합물)';
+          }
+        }
+      } else if (Math.abs(x - cx) < 55 && y > cy + 170 && y < cy + 280) {
+        text = (currentStep === 6) ? '정제 완료 삼각플라스크 (투명한 순수 DCM 추출액)' : '수거용 삼각플라스크 (Erlenmeyer Flask)';
+      }
+
+      if (text) {
+        tooltip.innerText = text;
+        tooltip.style.left = `${x + 14}px`;
+        tooltip.style.top = `${y + 14}px`;
+        tooltip.style.opacity = '1';
+      } else {
+        tooltip.style.opacity = '0';
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      document.getElementById('sim-tooltip').style.opacity = '0';
+    });
+
+    // 실행 시작
+    window.onload = function() {
+      resizeCanvas();
+      updateUI();
+      render();
+    };
+  </script>
+</body>
+</html>
